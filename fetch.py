@@ -16,10 +16,13 @@ env.launch()
 # Create a Fetch and Camera robot object
 fetch = rtb.models.Fetch()
 fetch_camera = rtb.models.FetchCamera()
+print(fetch.grippers)
 
 # Set joint angles to zero configuration
 fetch.q = fetch.qz
+print(fetch.n)
 fetch_camera.q = fetch_camera.qz
+print(fetch_camera.n)
 
 # ADDING ENVIRONMENT STUFF
 env_stuff = stuff()

@@ -23,7 +23,6 @@ def transform_between_vectors(a, b):
 
     return sm.SE3.AngleAxis(angle, axis)
 
-
 # Launch the simulator Swift
 env = swift.Swift()
 env.launch()
