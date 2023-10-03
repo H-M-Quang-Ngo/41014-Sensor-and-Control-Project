@@ -14,7 +14,7 @@ env = swift.Swift()
 env.launch()
 
 # Make a fetch robot and add it to Swift
-fetch = rtb.models.FetchCamera()
+fetch = rtb.models.Fetch()
 fetch.q = fetch.qr
 env.add(fetch)
 
