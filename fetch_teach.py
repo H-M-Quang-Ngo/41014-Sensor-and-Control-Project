@@ -14,8 +14,8 @@ env = swift.Swift()
 env.launch()
 
 # Make a fetch robot and add it to Swift
-fetch = rtb.models.Fetch()
-fetch.q = fetch.qr
+fetch = rtb.models.FetchCamera()
+fetch.q = fetch.qz
 env.add(fetch)
 
 fetch.links[1].qlim = [-2*np.pi, 2*np.pi]
@@ -67,8 +67,8 @@ for link in fetch.links:
             env.add(
                 swift.Slider(
                     lambda x, j=j: set_joint(j, x),
-                    min=-360,
-                    max=360,
+                    min=-180,
+                    max=180,
                     step=1,
                     value=np.round(np.rad2deg(fetch.q[j]), 2),
                     desc="Fetch Joint " + str(j),

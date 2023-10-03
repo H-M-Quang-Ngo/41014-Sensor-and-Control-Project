@@ -36,7 +36,7 @@ fetch.q = fetch.qz
 fetch_camera.q = fetch_camera.qz
 
 # Make target object obstacles with velocities
-target = sg.Sphere(radius=0.05, base=sm.SE3(-2.0, 0.0, 0.5))
+target = sg.Sphere(radius=0.05, base=sm.SE3(5, 0.0, 0.5))
 
 # Make line of sight object to visualize where the camera is looking
 sight_base = sm.SE3.Ry(np.pi / 2) * sm.SE3(0.0, 0.0, 2.5)
