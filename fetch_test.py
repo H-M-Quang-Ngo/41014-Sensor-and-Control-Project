@@ -80,15 +80,23 @@ fetch.links[1].qlim = [-2*np.pi, 2*np.pi]
 qlim = fetch.qlim.T
 
 # Set joint angles to zero configuration
-fetch.q = fetch.qz
-fetch_camera.q = fetch_camera.qz
-fix_head_tilt = np.deg2rad(20)
+fetch.q = fetch.qr
+fetch_camera.q = fetch_camera.qr
+fix_head_tilt = np.deg2rad(0)
 fetch_camera.q[-1] = fix_head_tilt
 
 # Create target points for vision:
-points = np.column_stack(([2.58,0.5,0.47],[2.58,-0.5,0.47]))
-pattern_1 = geometry.Sphere(radius= 0.03, pose = SE3(points[:,0]), color = (0,0,0.5,1))
-pattern_2 = geometry.Sphere(radius= 0.03, pose = SE3(points[:,1]), color = (0,0,0.5,1))
+points = np.column_stack(([4,0.25,1.4],
+                          [4,-0.25,1.4],
+                          [4,0.25,0.9],
+                          [4,-0.25,0.9]))
+
+pattern_lists = []
+for i in range(points.shape[1]):
+    pattern_lists.append(geometry.Sphere(radius= 0.03, pose = SE3(points[:,i]), color = (0,0,0.5,1)))
+
+# pattern_1 = geometry.Sphere(radius= 0.03, pose = SE3(points[:,0]), color = (0,0,0.5,1))
+# pattern_2 = geometry.Sphere(radius= 0.03, pose = SE3(points[:,1]), color = (0,0,0.5,1))
 
 # Add a camera test object
 camera = CentralCamera(f= 0.015, rho = 10e-6, imagesize = [1280, 1360], pp = [640,690], name = 'Fetch Camera')
@@ -104,7 +112,8 @@ for i in range(len(q_rand)):
     if i == 0:
         continue
     if i == 1:
-        q_rand[i] = np.random.uniform(-2,2)
+        # q_rand[i] = np.random.uniform(-5,5)
+        q_rand[i] = 2.3
         continue
     q_rand[i] = np.random.uniform(qlim[i,0], qlim[i,1])
 traj = gen_traj(fetch.q, q_rand)
@@ -117,8 +126,7 @@ env.add(fetch)
 env.add(fetch_camera)
 # env.add(cam_obj_test)
 env_stuff.add_to_env(env)
-env.add(pattern_1)
-env.add(pattern_2)
+[env.add(pattern) for pattern in pattern_lists]
 
 if __name__ == "__main__":
 
@@ -131,6 +139,8 @@ if __name__ == "__main__":
 
     # cam_move_thread = threading.Thread(target= update_camera_view, args = (camera, points, image_plane))
     # cam_move_thread.start()
+    update_camera_view()
+    plt.pause(0.01)
 
     # Run the robot
     for q in traj:

@@ -79,6 +79,7 @@ def step():
 
     # Spatial error between end-effector and target
     et = np.sum(np.abs(eTep[:3, -1]))
+    # print("Here:",et)
 
     # Weighting function used for objective function
     def w_lambda(et, alpha, gamma):
@@ -94,7 +95,7 @@ def step():
     Q[n + 3 : n + 6, n + 3 : n + 6] *= w_lambda(et, 0.01, -5.0)  # Slack arm angular
     Q[n + 6 : -1, n + 6 : -1] *= 100  # Slack camera
     Q[-1, -1] *= w_lambda(et, 1000.0, 3.0)  # Slack self-occlusion
-
+  
     # Calculate target velocities for end-effector to reach target
     v_manip, _ = rtb.p_servo(wTe, Tep, 1.5)
     v_manip[3:] *= 1.3
@@ -105,9 +106,12 @@ def step():
 
     # The equality contraints to achieve velocity targets
     Aeq = np.c_[fetch.jacobe(fetch.q), np.zeros((6, 2)), np.eye(6), np.zeros((6, 4))]
+    print(Aeq.shape)
     beq = v_manip.reshape((6,))
 
     jacobe_cam = fetch_camera.jacobe(fetch_camera.q)[3:, :]
+    print(jacobe_cam.shape, jacobe_cam[:, :3].shape, jacobe_cam[:, 3:].shape)
+    input('')
     Aeq_cam = np.c_[
         jacobe_cam[:, :3],
         np.zeros((3, 7)),
@@ -116,8 +120,12 @@ def step():
         np.eye(3),
         np.zeros((3, 1)),
     ]
+
     Aeq = np.r_[Aeq, Aeq_cam]
     beq = np.r_[beq, v_camera[3:].reshape((3,))]
+
+    print(Aeq.shape)
+    input('')
 
     # The inequality constraints for joint limit avoidance
     Ain = np.zeros((n + 10, n + 10))

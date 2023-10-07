@@ -177,5 +177,5 @@ class VisionDemo:
 
 # ---------------------------------------------------------------------------------------#
 if __name__ == "__main__":
-    lab8_starter = VisionDemo()
+    test = VisionDemo()
     plt.show()
