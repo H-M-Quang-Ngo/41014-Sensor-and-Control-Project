@@ -82,6 +82,9 @@ qlim = fetch.qlim.T
 # Set joint angles to zero configuration
 fetch.q = fetch.qr
 fetch_camera.q = fetch_camera.qr
+random_base = SE3(0,0,0)
+fetch.base = random_base
+fetch_camera.base = random_base
 fix_head_tilt = np.deg2rad(0)
 fetch_camera.q[-1] = fix_head_tilt
 
@@ -149,12 +152,10 @@ if __name__ == "__main__":
         fetch_camera.q[3:5] = [0,fix_head_tilt]
         update_camera_pose(camera, fetch_camera, cam_obj_test)
         update_camera_view()
-        # image_plane.cla()
-        # image_plane.set_xlim(0, camera.imagesize[0])
-        # image_plane.set_ylim(0, camera.imagesize[1])
+        print("A:\n",fetch.fkine(fetch.q, end= 'base_link'))
+        print("B:\n",fetch.fkine(fetch.q, end= 'base_link'))
         env.step(0)
         plt.pause(0.01)
-        # time.sleep(0.01)
 
     STOP_FLAG = True
     # cam_move_thread.join()  

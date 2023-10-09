@@ -110,8 +110,8 @@ def step():
     beq = v_manip.reshape((6,))
 
     jacobe_cam = fetch_camera.jacobe(fetch_camera.q)[3:, :]
-    print(jacobe_cam.shape, jacobe_cam[:, :3].shape, jacobe_cam[:, 3:].shape)
-    input('')
+    # print(jacobe_cam.shape, jacobe_cam[:, :3].shape, jacobe_cam[:, 3:].shape)
+    # input('')
     Aeq_cam = np.c_[
         jacobe_cam[:, :3],
         np.zeros((3, 7)),
@@ -123,9 +123,6 @@ def step():
 
     Aeq = np.r_[Aeq, Aeq_cam]
     beq = np.r_[beq, v_camera[3:].reshape((3,))]
-
-    print(Aeq.shape)
-    input('')
 
     # The inequality constraints for joint limit avoidance
     Ain = np.zeros((n + 10, n + 10))
