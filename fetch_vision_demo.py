@@ -195,6 +195,8 @@ def step():
         100 * np.ones(9),
         0,
     ]
+
+    print(fetch_camera.qdlim[3 : fetch_camera.n].shape)
     ub = np.r_[
         fetch.qdlim[: fetch.n],
         fetch_camera.qdlim[3 : fetch_camera.n],

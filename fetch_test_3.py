@@ -2,9 +2,11 @@ import swift
 import roboticstoolbox as rtb
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 from spatialmath import SE3
 from spatialmath.base import *
 import spatialgeometry as geometry
+import qpsolvers as qp
 from math import pi
 from support_funcs import *
 from machinevisiontoolbox import CentralCamera
@@ -27,7 +29,7 @@ fetch_camera.q = fetch_camera.qr
 # Set up a random position
 rand_x = np.random.uniform(0,-2)
 rand_y = np.random.uniform(-0.3, 0.3)
-rand_yaw = np.random.uniform(-20, 20)
+rand_yaw = np.random.uniform(-30, 30)
 random_base = SE3(rand_x,rand_y,0) * SE3.Rz(np.deg2rad(rand_yaw))
 fetch.base = random_base
 fetch_camera.base = random_base
@@ -71,11 +73,14 @@ if __name__ == "__main__":
     def w_lambda(et, alpha, gamma):
         return alpha * np.power(et, gamma)
 
-    n_base = 2
-    n_arm = 8
-    n_camera = 2
-    n = n_base + n_arm + n_camera
-
+    def reduce_qd(qd, qdlim, scale = False):
+        if scale:
+            scaling_factor = np.minimum(np.abs(qdlim)/np.abs(qd), 1)
+            qd *= scaling_factor
+        for i in range(len(qd)):
+            qd[i] = min(abs(qd[i]), qdlim[i])*qd[i]/abs(qd[i])
+        
+        
     update_camera_pose(camera, fetch_camera, adj_mat= T_FC_C)
     update_camera_view(camera, points, image_plane)
     
@@ -90,7 +95,6 @@ if __name__ == "__main__":
         """
         PBVS for mobile base
         """
-    
         update_camera_pose(camera, fetch_camera)
         
         # Estimate object's pose in camera frame
@@ -105,15 +109,63 @@ if __name__ == "__main__":
         
         # Find Fetch camera pose in world frame
         wTc = fetch_camera.fkine(fetch_camera.q).A
-        
-        # Calculate target velocity for Fetch camera to get towards target
-        v_camera, _ = rtb.p_servo(wTc, wTc @ T_delta.A , 1.5)
+                
+        et = np.sum(np.abs(T_delta.A[:3,-1]))
 
-        qd_cam = np.linalg.pinv(fetch_camera.jacobe(fetch_camera.q)) @ v_camera
+        # Quadratic component of objective function
+        Q = np.eye(fetch_camera.n * 2)
+        
+        Q[:2, :2] *= w_lambda(et, 1, -1) # Mobile base
+        Q[2,2] *= 0.01 # Torso
+        Q[fetch_camera.n:-1, fetch_camera.n:-1] *= 10 # Slack fetch camera
+
+        # Calculate target velocity for Fetch camera to get towards target
+        v_camera, _ = rtb.p_servo(wTc, wTc @ T_delta.A , 5)
+
+        # Equality constraints to achieve velocity targets
+        Aeq = fetch_camera.jacobe(fetch_camera.q)
+        Aeq = np.c_[Aeq, np.ones((6,fetch_camera.n))]
+        beq =  v_camera.reshape((6,))
+        # beq = np.r_[beq, np.ones(fetch_camera.n)]
+ 
+        # The minimum angle (in radians) in which the joint is allowed to approach
+        # to its limit
+        ps = 0.1
+
+        # The influence angle (in radians) in which the velocity damper
+        # becomes active
+        pi = 0.9
+
+        # The inequality constraints for joint limit avoidance
+        Ain, bin = fetch_camera.joint_velocity_damper(ps, pi, fetch_camera.n)
+        Ain = np.c_[Ain, np.zeros((5,5))]
+        # bin = np.r_[bin, np.zeros(fetch_camera.n)]
+
+        # Linear component of objective function:
+        c = np.zeros(fetch_camera.n * 2)
+        # Get base to face end-effector
+        kε = 0.5
+        bTe = fetch_camera.fkine(fetch.q, include_base=False).A
+        θε = math.atan2(bTe[1, -1], bTe[0, -1])
+        ε = kε * θε
+        c[0] = -ε
+
+        # Lower and upper bounds on the joint velocity
+        lb = -np.r_[fetch_camera.qdlim, 100 * np.ones(5)]
+        ub = np.r_[fetch_camera.qdlim, 100 * np.ones(5)]
+
+        # Solve for the joint velocities dq
+        qd_cam = qp.solve_qp(Q, c, Ain, bin, Aeq, beq, lb = lb, ub = ub, solver = 'daqp')
+        
+        if qd_cam is None:
+            qd_cam = np.linalg.pinv(fetch_camera.jacobe(fetch_camera.q)) @ v_camera
+            reduce_qd(qd_cam, fetch_camera.qdlim, True)
+        else:
+            print("Yes")
         
         arrived =  np.linalg.norm(qd_cam) < 0.1
 
-        fetch_camera.qd = qd_cam
+        fetch_camera.qd = qd_cam[:fetch_camera.n]
         fetch.qd[:3] = qd_cam[:3]
             
         return arrived
