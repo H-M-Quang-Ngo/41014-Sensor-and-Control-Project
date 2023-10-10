@@ -9,6 +9,7 @@ from math import pi
 from support_funcs import *
 from machinevisiontoolbox import CentralCamera
 from environment import stuff
+from gripper import Gripper_finger_Fetch
 
 # Launch the simulator Swift
 env = swift.Swift()
@@ -19,6 +20,10 @@ fetch = rtb.models.Fetch()
 fetch_camera = rtb.models.FetchCamera()
 fetch.links[1].qlim = [-2*np.pi, 2*np.pi]
 qlim = fetch.qlim.T
+
+# Gripper fetch
+gripper_fetch = Gripper_finger_Fetch(env= env)
+gripper_fetch.add_to_env(env)
 
 # Set joint angles to zero configuration
 fetch.q = fetch.qr
@@ -57,14 +62,23 @@ update_camera_view(camera, points, image_plane)
 plt.pause(0.01)
 
 # ADDING ENVIRONMENT STUFF
-env_stuff = stuff()
+env_stuff = stuff(env= env)
 
 # Add the Fetch and other shapes to the simulator
 env.add(fetch)
 env.add(fetch_camera)
 # env.add(cam_obj_test)
-env_stuff.add_to_env(env)
+env_stuff.add_to_env()
 [env.add(pattern) for pattern in pattern_lists]
+
+
+def gripper_attach(fkine_fetch, env):
+    """Attach the grippers."""
+    gripper_fetch.base = gripper_fetch.Gripper_base_origin * fkine_fetch * SE3.Ry(pi/2) * SE3.Rz(pi/2) * SE3.Trans(0.0073,0,0) * SE3.Ry(pi/2)
+    gripper_fetch._update_3dmodel()
+    env.step(0.001)
+    
+    
 
 if __name__ == "__main__":
 
@@ -115,6 +129,8 @@ if __name__ == "__main__":
 
         fetch_camera.qd = qd_cam
         fetch.qd[:3] = qd_cam[:3]
+        
+        #gripper_attach(fetch.fkine(fetch.q), env)
             
         return arrived
     
@@ -122,12 +138,24 @@ if __name__ == "__main__":
     print("Fetch initial position:") 
     fetch.base.printline()
 
+    gripper_attach(fetch.fkine(fetch.q), env)
+    time.sleep(2)
+    q_goal = [0.03]
+    qtraj = rtb.jtraj(gripper_fetch.q, q_goal, 50).q
+    
+    for q in qtraj:
+        gripper_fetch.q = q
+        env.step(0)
+        time.sleep(0.02)
+        
+    
     # Wait 1 sec before starting
     time.sleep(1)
     arrived = False
     while not arrived:
         arrived = step_base()
         update_camera_view(camera, points, image_plane, True)
+        gripper_attach(fetch.fkine(fetch.q), env)
         plt.pause(0.01)
         env.step(0.01)
 
