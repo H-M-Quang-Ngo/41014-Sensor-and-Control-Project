@@ -42,6 +42,37 @@ def update_camera_view(camera: CentralCamera, points: np.ndarray, image_plane, t
 
     # time.sleep(0.01)
 
+def reduce_qd(qd, qdlim, scale = False):
+    if scale:
+        scaling_factor = np.minimum(np.abs(qdlim)/np.abs(qd), 1)
+        qd *= scaling_factor
+        # return qd
+    else:
+        for i in range(len(qd)):
+            qd[i] = min(abs(qd[i]), qdlim[i])*qd[i]/abs(qd[i])
+    
+    return qd
+
+def dls_vel(robot: rtb.Robot, v:np.ndarray, epsilon: float = 0.01, max_lambda: float = 0.5, 
+            qdlim: np.ndarray = None, scale: bool = True):
+    
+    J = robot.jacobe(robot.q)
+    m = np.sqrt(abs(np.linalg.det(J @ J.T)))
+
+    if m < epsilon: # If manipulability is less than given threshold
+        m_lambda = (1 - m/epsilon) * max_lambda
+        # print('Damped Least Square Applied!')
+    else:
+        m_lambda = 0
+    
+    inv_j = np.linalg.pinv(J.T @ J + m_lambda * np.eye(robot.n)) @ J.T # DLS Inverse
+    qd = inv_j @ v
+
+    if qdlim is not None:
+        qd = reduce_qd(qd, qdlim, scale)
+
+    return qd
+
 def distance(q1, q2):
     """
     Euclidean distance between two joint state vector

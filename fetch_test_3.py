@@ -34,21 +34,23 @@ random_base = SE3(rand_x,rand_y,0) * SE3.Rz(np.deg2rad(rand_yaw))
 fetch.base = random_base
 fetch_camera.base = random_base
 
-# Create target points for vision:
-points = np.column_stack(([4,0.25,1.4],
-                          [4,-0.25,1.4],
-                          [4,-0.25,0.9],
-                          [4,0.25,0.9]))
-obj_pose = SE3(4,0,1.15) * SE3.Ry(pi/2) * SE3.Rz(-pi/2)
+# Create 3D target pose and points for vision:
+x_3d, y_3d, z_3d = 4, 0, 1.1
+size = 0.15 # edge length of checkerboard
+points = np.column_stack(([x_3d, y_3d + size/2 , z_3d + size/2],
+                          [x_3d, y_3d - size/2 , z_3d + size/2],
+                          [x_3d, y_3d - size/2 , z_3d - size/2],
+                          [x_3d, y_3d + size/2 , z_3d - size/2]))
+obj_pose = SE3(x_3d, y_3d, z_3d) * SE3.Ry(pi/2) * SE3.Rz(-pi/2)
 pattern_lists = []
 for i in range(points.shape[1]):
-    pattern_lists.append(geometry.Sphere(radius= 0.03, pose = SE3(points[:,i]), color = (0,0,0.5,1)))
+    pattern_lists.append(geometry.Sphere(radius= 0.02, pose = SE3(points[:,i]), color = (0,0,0.5,1)))
 
 # Add a camera test object
 camera = CentralCamera(f= 0.015, rho = 10e-6, imagesize = [640, 480], pp = [320,240], name = 'Fetch Camera')
 cam_obj_test = geometry.Cuboid(scale= (0.3,0.1,0.5), pose = camera.pose, color = (0.3, 0.1, 0.1, 0.3))
 
-# camera in Fetch camera frame
+# Camera in Fetch camera frame
 T_FC_C = SE3.Ry(pi/2) * SE3.Rz(-pi/2)
 update_camera_pose(camera, fetch_camera, cam_obj_test, T_FC_C)
 camera.plot_point(points, pose = camera.pose)
@@ -67,46 +69,12 @@ env_stuff.add_to_env()
 [env.add(pattern) for pattern in pattern_lists]
 
 if __name__ == "__main__":
-
-    def reduce_qd(qd, qdlim, scale = False):
-        if scale:
-            scaling_factor = np.minimum(np.abs(qdlim)/np.abs(qd), 1)
-            qd *= scaling_factor
-            # return qd
-        else:
-            for i in range(len(qd)):
-                qd[i] = min(abs(qd[i]), qdlim[i])*qd[i]/abs(qd[i])
-        
-        return qd
-    
-    def dls_vel(robot: rtb.Robot, v:np.ndarray, epsilon: float = 0.01, max_lambda: float = 0.5, 
-                qdlim: np.ndarray = None, scale: bool = True):
-        
-        J = robot.jacobe(robot.q)
-        m = np.sqrt(abs(np.linalg.det(J @ J.T)))
-
-        if m < epsilon: # If manipulability is less than given threshold
-            m_lambda = (1 - m/epsilon) * max_lambda
-            # print('Damped Least Square Applied!')
-        else:
-            m_lambda = 0
-        
-        inv_j = np.linalg.pinv(J.T @ J + m_lambda * np.eye(robot.n)) @ J.T # DLS Inverse
-        qd = inv_j @ v
-
-        if qdlim is not None:
-            qd = reduce_qd(qd, qdlim, scale)
-
-        return qd
-
     
     # The required relative pose of goal in camera frame 
-    T_Cd_G = SE3.Tz(1.6) # object pose is 1.55m front-to parallel to the camera plane
+    T_Cd_G = SE3(0,0.1,1.5) # object pose is 1.5m front-to parallel and 0.1m lower to the camera plane
 
     # The required relative pose of goal in Fetch camera frame
     T_FCd_G = T_FC_C * T_Cd_G
-
-
 
     def step_base():
         """
