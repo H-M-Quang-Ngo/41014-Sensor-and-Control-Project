@@ -78,7 +78,25 @@ def gripper_attach(fkine_fetch, env):
     gripper_fetch._update_3dmodel()
     env.step(0.001)
     
+def manipulate_gripper(env,open):
+    gripper_attach(fetch.fkine(fetch.q), env)
     
+    if open: 
+        gripper_range = 0.03
+        print("Gripper open!")
+    else: 
+        gripper_range = 0
+        print("Gripper close!")
+    
+    q_goal = [gripper_range, -2*gripper_range -0.015]
+    
+    qtraj = rtb.jtraj(gripper_fetch.q, q_goal, 50).q
+    
+    for q in qtraj:
+        gripper_fetch.q = q
+        env.step(0)
+        time.sleep(0.02)
+
 
 if __name__ == "__main__":
 
@@ -138,19 +156,9 @@ if __name__ == "__main__":
     print("Fetch initial position:") 
     fetch.base.printline()
 
-    gripper_attach(fetch.fkine(fetch.q), env)
-    time.sleep(2)
-    q_goal = [0.03]
-    qtraj = rtb.jtraj(gripper_fetch.q, q_goal, 50).q
-    
-    for q in qtraj:
-        gripper_fetch.q = q
-        env.step(0)
-        time.sleep(0.02)
-        
-    
     # Wait 1 sec before starting
     time.sleep(1)
+    manipulate_gripper(env, open= True)
     arrived = False
     while not arrived:
         arrived = step_base()
@@ -159,5 +167,6 @@ if __name__ == "__main__":
         plt.pause(0.01)
         env.step(0.01)
 
+    manipulate_gripper(env, open = False)
     input('Enter to end!')
     # env.hold()

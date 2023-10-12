@@ -59,13 +59,13 @@ update_camera_view(camera, points, image_plane)
 plt.pause(0.01)
 
 # ADDING ENVIRONMENT STUFF
-env_stuff = stuff()
+env_stuff = stuff(env)
 
 # Add the Fetch and other shapes to the simulator
 env.add(fetch)
 env.add(fetch_camera)
 # env.add(cam_obj_test)
-env_stuff.add_to_env(env)
+env_stuff.add_to_env()
 [env.add(pattern) for pattern in pattern_lists]
 
 if __name__ == "__main__":

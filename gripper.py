@@ -8,6 +8,7 @@ import roboticstoolbox as rtb
 import spatialmath.base as smb
 from ir_support.robots.DHRobot3D import DHRobot3D
 import os
+import time
 
 from math import pi
 
@@ -23,12 +24,14 @@ class Gripper_finger_Fetch(DHRobot3D):
         # Names of the robot link files in the directory
         link3D_names = dict(
             link0 = 'blank_model',
-            link1 = 'gripper_finger'
+            link1 = 'gripper_finger',
+            link2 = 'gripper_finger'
         )
         
-        qtest = [0]
+        qtest = [0,0]
         
         qtest_transforms = [
+            smb.transl(0,0,0),
             smb.transl(0,0,0),
             smb.transl(0,0,0)
         ]    
@@ -52,8 +55,11 @@ class Gripper_finger_Fetch(DHRobot3D):
         Create Gripper RIGHT Robot's standard DH model
         """
         links = [] # BASE
-        link = rtb.PrismaticDH(a = 0, alpha = 0, offset = 0, qlim = [-0.3, 0.3])
-        links.append(link)
+        
+        link_right = rtb.PrismaticDH(a = 0, alpha = 0, offset = 0, qlim = [-0.3, 0.3])
+        link_left = rtb.PrismaticDH(a=0 , alpha = 0, offset = 0, qlim = [-0.3, 0.3])
+        links.append(link_right)
+        links.append(link_left)
 
         return links
 
@@ -67,9 +73,10 @@ class Gripper_finger_Fetch(DHRobot3D):
                 
 
         flag = True
+        time.sleep(1)
         while True:
             if flag:
-                q_goal = [0.1]
+                q_goal = [0.1, -0.2]
                 flag = False
             else:
                 # q_goal = [0,0,-pi/4,-pi/8]
