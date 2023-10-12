@@ -22,8 +22,8 @@ fetch.links[1].qlim = [-2*np.pi, 2*np.pi]
 fetch.links[2].qlim = [-10, 10]
 
 # Add some objects
-env_stuff = stuff()
-env_stuff.add_to_env(env)
+env_stuff = stuff(env)
+# env_stuff.add_to_env(env)
 
 
 for link in fetch.links:
