@@ -54,18 +54,29 @@ def reduce_qd(qd, qdlim, scale = False):
     return qd
 
 def dls_vel(robot: rtb.Robot, v:np.ndarray, epsilon: float = 0.01, max_lambda: float = 0.5, 
+            start: str = None, 
+            end: str = None, 
             qdlim: np.ndarray = None, scale: bool = True):
     
-    J = robot.jacobe(robot.q)
+    if start is not None and end is None:
+        J = robot.jacobe(robot.q, start = start)
+    elif start is None and end is not None:
+        J = robot.jacobe(robot.q, end = end)
+    elif start is not None and end is not None:
+        J = robot.jacobe(robot.q, start = start, end = end)
+    else:
+        J = robot.jacobe(robot.q)
+
     m = np.sqrt(abs(np.linalg.det(J @ J.T)))
 
     if m < epsilon: # If manipulability is less than given threshold
         m_lambda = (1 - m/epsilon) * max_lambda
         # print('Damped Least Square Applied!')
     else:
+        # print("No DLS!")
         m_lambda = 0
     
-    inv_j = np.linalg.pinv(J.T @ J + m_lambda * np.eye(robot.n)) @ J.T # DLS Inverse
+    inv_j = np.linalg.pinv(J.T @ J + m_lambda * np.eye(J.shape[1])) @ J.T # DLS Inverse
     qd = inv_j @ v
 
     if qdlim is not None:

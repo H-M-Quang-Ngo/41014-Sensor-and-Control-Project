@@ -90,9 +90,6 @@ class Gripper_finger_Fetch(DHRobot3D):
             
             self._env.hold()
                 
-
-
-
 if __name__ == "__main__":
     env = Swift()
     env.launch(realtime= True)
