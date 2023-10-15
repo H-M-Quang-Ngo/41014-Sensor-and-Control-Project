@@ -29,7 +29,6 @@ qlim = fetch.qlim.T
 # Set joint angles to an initial configuration
 fetch.q = fetch.qr
 fetch_camera.q = fetch_camera.qr
-# fetch.q[3:] = np.deg2rad([90, 15, -120, 90, 90, 90, -45]) # Used
 fetch.q[3:] = np.deg2rad([90, 40, -180, 90, 0, 90, -45])
 
 # Set up a random position
@@ -56,7 +55,7 @@ for i in range(points.shape[1]):
 camera = CentralCamera(f= 0.015, rho = 10e-6, imagesize = [640, 480], pp = [320,240], name = 'Fetch Camera')
 cam_obj_test = geometry.Cuboid(scale= (0.3,0.1,0.5), pose = camera.pose, color = (0.3, 0.1, 0.1, 0.3))
 
-# Camera in Fetch camera frame
+# Relative pose of the camera in the default Fetch camera frame
 T_FC_C = SE3.Ry(pi/2) * SE3.Rz(-pi/2)
 update_camera_pose(camera, fetch_camera, cam_obj_test, T_FC_C)
 camera.plot_point(points, pose = camera.pose)
@@ -66,16 +65,21 @@ plt.pause(0.01)
 
 # Adding environment stuffs
 env_stuff = stuff(env)
+cans = [env_stuff.can_1, env_stuff.can_2]
 # Transform to fix object positions
 T_adjust = SE3(3.05, 0.96, 1.91) * SE3.RPY(0,-pi/2,-pi/2)    
 can_pose_1 = SE3(env_stuff.can_1.T)*T_adjust
 can_pose_2 = SE3(env_stuff.can_2.T)*T_adjust
 can_poses = [can_pose_1, can_pose_2]
 
-# Goal poses for the objects
-goal_1 = [SE3(2.75, -0.4, 0.7) * SE3.Ry(pi/2), SE3(2.7, -0.4, 0.55) * SE3.Ry(pi/2)] 
-goal_2 = [SE3(2.8, -0.35 ,0.7) * SE3.Ry(pi/2), SE3(2.8, -0.35 ,0.55) * SE3.Ry(pi/2)]
-goal_poses = [goal_1, goal_2] 
+# Goal poses for the objects with waypoints
+goal_1 = SE3(2.8, -0.6, 0.6) 
+goal_2 = SE3(2.8, -0.4, 0.6)
+goal_1.A[:3,:3] = SE3.Ry(pi/2).R
+goal_2.A[:3,:3] = SE3.Ry(pi/2).R
+goal_wp1 = [SE3.Tz(0.1)*goal_1, goal_1, SE3.Tz(0.2)*goal_1] 
+goal_wp2 = [SE3.Tz(0.1)*goal_2, goal_2, SE3.Tz(0.2)*goal_2]
+goal_poses = [goal_wp1, goal_wp2] 
 
 # Add the Fetch and other shapes into the simulator
 env.add(fetch)
@@ -90,10 +94,10 @@ if __name__ == "__main__":
     time.sleep(2)
     
     ## SET-UP REQUIRED VARIABLES ---------------------------------------------------------------------------#
-    # The required relative pose of goal in camera frame 
+    # The required relative pose of the marker in camera frame 
     T_Cd_G = SE3(0,0.15,1.5) # object pose is 1.5m front-to parallel and 0.1m lower to the camera plane
 
-    # The required relative pose of goal in Fetch camera frame
+    # The required relative pose of marker in Fetch camera frame
     T_FCd_G = T_FC_C * T_Cd_G
 
     # Distance(m) that the Fetch maintains from the board
@@ -103,13 +107,16 @@ if __name__ == "__main__":
     dist_ob_h = 0.25
 
     # Vertical distance(m) that the Fetch maintains from the objects in table
-    dist_ob_v = 0.1
+    dist_ob_v = 0.05
+
+    # Max control step
+    max_step = 150
 
     ## SET-UP REQUIRED CONTROL FUNCTIONS --------------------------------------------------------------------#
-    # Function to move the Fetch to the required position using Position-Base visual servoing
+    # Function to move the Fetch to the required position using Position-Based Visual Servoing
     def step_base_pbvs():
         """
-        PBVS for mobile base
+        Position-Based Visual Servoing for mobile base
         """
         update_camera_pose(camera, fetch_camera)
         
@@ -182,7 +189,7 @@ if __name__ == "__main__":
         et = np.sum(np.abs(T_delta.A[:3,-1]))
 
         # Spatial velocity to reach goal
-        v, _ = rtb.p_servo(wT, Tep, gain)
+        v, _ = rtb.p_servo(wT, Tep, gain, err)
 
         # Joint velocity to reach goal
         if start is not None and end is None:
@@ -207,17 +214,6 @@ if __name__ == "__main__":
         return arrived
     
     ## CONTROL STEPS ----------------------------------------------------------------------------------------#
-    # Required pose of the Fetch torso link to pick object 
-    Tep_b1 = fetch.fkine(fetch.q, end= 'torso_lift_link').A
-    Tep_b1[:3,-1] = [QR_pose.A[0,-1] - dist_base,
-                     can_pose_1.A[1,-1] - dist_ob_h,
-                     can_pose_1.A[2,-1] + dist_ob_v]
-    
-    # Required pose of the Fetch gripper to pick object 1
-    Tep_p1 = can_pose_1.A
-    Tep_p1[:3,:3] = SE3.Ry(pi/2).R
-    Tep_p1[2,-1] -= 0.02
-    
     # 1. Move the Fetch from a random initial position to the target table by Position-Base visual servoing
     arrived = False
     while not arrived:
@@ -226,37 +222,75 @@ if __name__ == "__main__":
         plt.pause(0.01)
         env.step(0.01)
     
-    # 2. Move the Fetch base to a relative position to object 1 
-    arrived = False
-    while not arrived:
-        arrived = step(Tep_b1, end= 'torso_lift_link', end_num= 2)     
-        plt.pause(0.01)
-        env.step(0.01)
-
-    # 2.1. Open gripper
-    
-
-    # 3. Move the Fetch arm to pick object
-    arrived = False
-    while not arrived:
-        arrived = step(Tep_p1, start= 'torso_lift_link', start_num= 2, err= 0.01, gain = 10)     
-        plt.pause(0.01)
-        env.step(0.01)
-
-    # 3.1 Close gripper
-    time.sleep(1)
-    T_e_c = fetch.fkine(fetch.q).inv() * SE3(env_stuff.can_1.T)
-    T_e_c.printline()
-
-    # 4. Move the object to the goal pose
-    for goal in goal_1:
+    # 2. Do the process of pick and place objects
+    for i in range(len(cans)):
+        # Required pose of the Fetch torso link to pick object 
+        Tep_b = fetch.fkine(fetch.q, end= 'torso_lift_link').A
+        Tep_b[:3,-1] = [QR_pose.A[0,-1] - dist_base,
+                        can_poses[i].A[1,-1] - dist_ob_h,
+                        can_poses[i].A[2,-1] - dist_ob_v]
+        
+        # Required pose of the Fetch gripper to pick object 
+        Tep_p = can_poses[i].A
+        Tep_p[:3,:3] = SE3.Ry(pi/2).R
+        Tep_p[2,-1] -= 0.01
+        
+        # 2.1 Move the Fetch base to the relative position to object
         arrived = False
-        while not arrived:
-            arrived = step(goal, err= 0.05)
-            env_stuff.can_1.T = fetch.fkine(fetch.q) * T_e_c
+        step_num = 0
+        while not arrived and step_num < max_step:
+            arrived = step(Tep_b, end= 'torso_lift_link', end_num= 2)
+            step_num += 1    
             plt.pause(0.01)
             env.step(0.01)
 
-    # 4.1 Open gripper
+        # 2.1.1 Open gripper
+        
+        # 2.2 Move the Fetch arm to pick object
+        arrived = False
+        step_num = 0
+        while not arrived and step_num < max_step:
+            arrived = step(Tep_p, start= 'torso_lift_link', start_num= 2, err= 0.05, gain = 10)    
+            step_num += 1 
+            plt.pause(0.01)
+            env.step(0.01)
+
+        # 2.3 Close gripper
+        time.sleep(1)
+
+        # Transform between end-effector and object while gripping
+        T_e_c = fetch.fkine(fetch.q).inv() * SE3(cans[i].T)
+
+        # 2.4 Move the object to the goal pose
+        for j, goal in enumerate(goal_poses[i]):
+            arrived = False
+            step_num = 0
+            while not arrived and step_num < max_step:
+                arrived = step(goal, err= 0.05)
+                if j != len(goal_poses[i])-1:
+                    cans[i].T = fetch.fkine(fetch.q).A @ T_e_c.A 
+                step_num += 1
+                plt.pause(0.01)
+                env.step(0.01)
+
+        # 2.4.1 Open gripper
+        time.sleep(1)
+    
+    ## 3. FINISHING ----------------------------------------------------------------------------------------#
+    # 3.1 Slide back
+    Te_back = SE3.Tx(-1.5) * fetch.fkine(fetch.q)
+    arrived = False
+    step_num = 0
+    while not arrived and step_num < max_step:
+        arrived = step(Te_back)     
+        plt.pause(0.01)
+        env.step(0.01)
+    
+    # 3.2 Waive the hand
+    traj = gen_traj(fetch.q[3:], np.deg2rad([90, 40, -180, 90, 0, 90, -45]))
+    for q in traj:
+        fetch.q[3:] = q
+        plt.pause(0.01)
+        env.step(0.01)
 
     input('Enter to end!')
