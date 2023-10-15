@@ -1,17 +1,21 @@
+## @file
+#  @brief Main file for executing the task: Fetch control with Position-Based Visual Servoing (PBVS) 
+#  @author Ho Minh Quang Ngo
+#  @date Oct 15, 2023
+
 import swift
 import roboticstoolbox as rtb
 import numpy as np
 import matplotlib.pyplot as plt
-import math
 from spatialmath import SE3
 from spatialmath.base import *
 import spatialgeometry as geometry
-import qpsolvers as qp
 from math import pi
 from support_funcs import *
 from machinevisiontoolbox import CentralCamera
 from environment import stuff
 
+## INITIAL SET-UP ------------------------------------------------------------------------------------------# 
 # Launch the simulator Swift
 env = swift.Swift()
 env.launch()
@@ -22,9 +26,11 @@ fetch_camera = rtb.models.FetchCamera()
 fetch.links[1].qlim = [-2*np.pi, 2*np.pi]
 qlim = fetch.qlim.T
 
-# Set joint angles to zero configuration
+# Set joint angles to an initial configuration
 fetch.q = fetch.qr
 fetch_camera.q = fetch_camera.qr
+# fetch.q[3:] = np.deg2rad([90, 15, -120, 90, 90, 90, -45]) # Used
+fetch.q[3:] = np.deg2rad([90, 40, -180, 90, 0, 90, -45])
 
 # Set up a random position
 rand_x = np.random.uniform(-1,0)
@@ -58,9 +64,9 @@ image_plane = plt.gca()
 update_camera_view(camera, points, image_plane)
 plt.pause(0.01)
 
-# ADDING ENVIRONMENT STUFF
+# Adding environment stuffs
 env_stuff = stuff(env)
-# Transform to fix object position
+# Transform to fix object positions
 T_adjust = SE3(3.05, 0.96, 1.91) * SE3.RPY(0,-pi/2,-pi/2)    
 can_pose_1 = SE3(env_stuff.my_cans_2.T)*T_adjust
 can_pose_2 = SE3(env_stuff.my_cans_1.T)*T_adjust
@@ -73,19 +79,43 @@ env.add(fetch_camera)
 env_stuff.add_to_env()
 [env.add(pattern) for pattern in pattern_lists]
 
+## MAIN CODE -----------------------------------------------------------------------------------------------# 
 if __name__ == "__main__":
+
     # Wait 1 sec before starting
     time.sleep(1)
     print("Fetch initial position:") 
     fetch.base.printline()
     
+    ## SET-UP REQUIRED VARIABLES ---------------------------------------------------------------------------#
     # The required relative pose of goal in camera frame 
     T_Cd_G = SE3(0,0.15,1.5) # object pose is 1.5m front-to parallel and 0.1m lower to the camera plane
 
     # The required relative pose of goal in Fetch camera frame
     T_FCd_G = T_FC_C * T_Cd_G
 
-    # Function to move the Fetch to the required position using Position base visual servoing
+    # Distance(m) that the Fetch maintains from the board
+    dist_base = 1.6
+
+    # Horizontal distance(m) that the Fetch maintains from the objects in table
+    dist_ob_h = 0.25
+
+    # Vertical distance(m) that the Fetch maintains from the objects in table
+    dist_ob_v = 0.1
+
+    # Required pose of the Fetch torso link to pick object 1
+    Tep_b1 = fetch.fkine(fetch.q, end= 'torso_lift_link').A
+    Tep_b1[:3,-1] = [QR_pose.A[0,-1] - dist_base,
+                     can_pose_1.A[1,-1] - dist_ob_h,
+                     can_pose_1.A[2,-1] + dist_ob_v]
+    
+    # Required pose of the Fetch gripper to pick object 1
+    Tep_p1 = can_pose_1.A
+    Tep_p1[:3,:3] = SE3.Ry(pi/2).R
+    Tep_p1[2,-1] -= 0.02
+
+    ## SET-UP REQUIRED CONTROL FUNCTIONS --------------------------------------------------------------------#
+    # Function to move the Fetch to the required position using Position-Base visual servoing
     def step_base_pbvs():
         """
         PBVS for mobile base
@@ -124,20 +154,7 @@ if __name__ == "__main__":
         
         return arrived
     
-    arrived = False
-    while not arrived:
-        arrived = step_base_pbvs()
-        update_camera_view(camera, points, image_plane, True)
-        plt.pause(0.01)
-        env.step(0.01)
-
-    # Distance that the Fetch maintains from the board
-    dist_base = 1.6
-
-    # Horizontal distance that the Fetch maintains from the objects in table
-    dist_ob = 0.25
-
-    # Function to control the Fetch with input goal pose
+    # Function to control the Fetch with an input goal pose
     def step(Tep:SE3|np.ndarray, 
              start:str = None, start_num:int = 0, 
              end: str = None, end_num:int = 0,
@@ -197,33 +214,27 @@ if __name__ == "__main__":
 
         return arrived
     
+    ## CONTROL STEPS ----------------------------------------------------------------------------------------#
+    # 1. Move the Fetch from a random initial position to the target table by Position-Base visual servoing
+    arrived = False
+    while not arrived:
+        arrived = step_base_pbvs()
+        update_camera_view(camera, points, image_plane, True)
+        plt.pause(0.01)
+        env.step(0.01)
     
-    # Required pose of the Fetch torso link to pick object 1
-    Tep_b1 = fetch.fkine(fetch.q, end= 'torso_lift_link').A
-    Tep_b1[0,-1] = QR_pose.A[0,-1] - dist_base
-    Tep_b1[1,-1] = can_pose_1.A[1,-1] - dist_ob
-
-    # Required pose of the Fetch gripper to pick object 1
-    Tep_p1 = can_pose_1.A
-    Tep_p1[:3,:3] = SE3.Ry(pi/2).R
-    # Tep_2[0,-1] -= 0.05
-    Tep_p1[2,-1] -= 0.02
-    
-    # Action to move the base
+    # 2. Move the Fetch base to a relative position to object 1 
     arrived = False
     while not arrived:
         arrived = step(Tep_b1, end= 'torso_lift_link', end_num= 2)     
         plt.pause(0.01)
         env.step(0.01)
 
-    # Action to go to the pick position
+    # 3. Move the Fetch arm to pick object 1
     arrived = False
     while not arrived:
         arrived = step(Tep_p1, start= 'torso_lift_link', start_num= 2, err= 0.05)     
-        print(fetch.qd)
         plt.pause(0.01)
         env.step(0.01)
-
-
 
     input('Enter to end!')

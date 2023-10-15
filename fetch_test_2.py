@@ -71,10 +71,10 @@ env.add(fetch_camera)
 env_stuff.add_to_env()
 [env.add(pattern) for pattern in pattern_lists]
 
-
 def gripper_attach(fkine_fetch, env):
     """Attach the grippers."""
-    gripper_fetch.base = gripper_fetch.Gripper_base_origin * fkine_fetch * SE3.Ry(pi/2) * SE3.Rz(pi/2) * SE3.Trans(0.0073,0,0) * SE3.Ry(pi/2)
+    T = SE3(0,0.0073,0) * SE3.RPY(pi/2, 0, pi)
+    gripper_fetch.base = gripper_fetch.Gripper_base_origin * fkine_fetch * T
     gripper_fetch._update_3dmodel()
     env.step(0.001)
     

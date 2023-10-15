@@ -14,8 +14,11 @@ env = swift.Swift()
 env.launch()
 
 # Make a fetch robot and add it to Swift
-fetch = rtb.models.FetchCamera()
+fetch = rtb.models.Fetch()
 fetch.q = fetch.qr
+fetch.q[3:] = np.deg2rad([90, 15, -120, 90, 90, 90, -45])
+fetch.q[3:] = np.deg2rad([90, 15, -180, 90, 0, 90, -45])
+
 env.add(fetch)
 
 fetch.links[1].qlim = [-2*np.pi, 2*np.pi]
