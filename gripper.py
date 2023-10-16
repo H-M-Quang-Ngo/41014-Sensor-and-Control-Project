@@ -7,13 +7,15 @@ from swift import Swift
 import roboticstoolbox as rtb
 import spatialmath.base as smb
 from ir_support.robots.DHRobot3D import DHRobot3D
+from spatialmath import SE3
 import os
 import time
 
 from math import pi
 
 class Gripper_finger_Fetch(DHRobot3D):
-    """ GRIPPER RIGHT FOR UR3 ROBOT ON LINEAR RAILS
+    """ 
+    GRIPPER FINGER FOR FETCH ROBOT
     """
     def __init__(self, env: Swift):
         # DH links
@@ -50,6 +52,8 @@ class Gripper_finger_Fetch(DHRobot3D):
         
         self.Gripper_base_origin = self.base
 
+        self._T_ee_gripper = SE3(0,0.0073,0) * SE3.RPY(pi/2, 0, pi)
+
     def _create_DH(self):
         """ 
         Create Gripper RIGHT Robot's standard DH model
@@ -62,8 +66,36 @@ class Gripper_finger_Fetch(DHRobot3D):
         links.append(link_left)
 
         return links
-
     
+    def gripper_attach(self, fetch_ee:SE3):
+        """
+        Attach the grippers onto the Fetch end-effector.
+        """
+        # T = SE3(0,0.0073,0) * SE3.RPY(pi/2, 0, pi)
+        self.base = self.Gripper_base_origin * fetch_ee * self._T_ee_gripper
+        self._update_3dmodel()
+        self._env.step(0.001)
+    
+    def manipulate_gripper(self, open: bool|str = True):        
+        """
+        Open or close the gripper
+        """
+        if open: 
+            gripper_range = 0.03
+            # print("Gripper open!")
+        elif open == 'half': 
+            gripper_range = 0.01
+            # print("Gripper close half!")
+        else:
+            gripper_range = 0
+        
+        q_goal = [gripper_range, -2*gripper_range - 0.015]
+        qtraj = rtb.jtraj(self.q, q_goal, 50).q
+        for q in qtraj:
+            self.q = q
+            self._env.step(0)
+            time.sleep(0.02)
+ 
     def test(self):
         """
         Test the class by adding the 3D objects into a new Swift window and do a simple movement
@@ -71,7 +103,6 @@ class Gripper_finger_Fetch(DHRobot3D):
         self.q = self._qtest
         self.add_to_env(self._env)
                 
-
         flag = True
         time.sleep(1)
         while True:

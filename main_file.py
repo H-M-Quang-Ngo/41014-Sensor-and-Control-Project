@@ -7,37 +7,42 @@ import swift
 import roboticstoolbox as rtb
 import numpy as np
 import matplotlib.pyplot as plt
+import spatialgeometry as geometry
+import threading
 from spatialmath import SE3
 from spatialmath.base import *
-import spatialgeometry as geometry
 from math import pi
 from support_funcs import *
 from machinevisiontoolbox import CentralCamera
 from environment import stuff
+from gripper import Gripper_finger_Fetch
 
 ## INITIAL SET-UP ------------------------------------------------------------------------------------------# 
 # Launch the simulator Swift
 env = swift.Swift()
 env.launch()
 
-# Create a Fetch and Camera robot object
+# Create a Fetch, Camera and Gripper robot object
 fetch = rtb.models.Fetch()
 fetch_camera = rtb.models.FetchCamera()
 fetch.links[1].qlim = [-2*np.pi, 2*np.pi]
 qlim = fetch.qlim.T
+fetch_gripper = Gripper_finger_Fetch(env= env)
 
 # Set joint angles to an initial configuration
 fetch.q = fetch.qr
 fetch_camera.q = fetch_camera.qr
 fetch.q[3:] = np.deg2rad([90, 40, -180, 90, 0, 90, -45])
+fetch_gripper.manipulate_gripper(False)
 
-# Set up a random position
+# Set up a random initial position
 rand_x = np.random.uniform(-1,0)
 rand_y = np.random.uniform(-1, 1)
 rand_yaw = -22.5*rand_y
 random_base = SE3(rand_x,rand_y,0) * SE3.Rz(np.deg2rad(rand_yaw))
 fetch.base = random_base
 fetch_camera.base = random_base
+fetch_gripper.gripper_attach(fetch.fkine(fetch.q))
 
 # Create 3D target pose and points for vision:
 x_3d, y_3d, z_3d = 4, 0, 1.1
@@ -73,19 +78,30 @@ can_pose_2 = SE3(env_stuff.can_2.T)*T_adjust
 can_poses = [can_pose_1, can_pose_2]
 
 # Goal poses for the objects with waypoints
-goal_1 = SE3(2.8, -0.6, 0.6) 
-goal_2 = SE3(2.8, -0.4, 0.6)
+goal_1 = SE3(2.8, -0.5, 0.6) 
+goal_2 = SE3(2.8, -0.3, 0.58)
 goal_1.A[:3,:3] = SE3.Ry(pi/2).R
 goal_2.A[:3,:3] = SE3.Ry(pi/2).R
-goal_wp1 = [SE3.Tz(0.1)*goal_1, goal_1, SE3.Tz(0.2)*goal_1] 
-goal_wp2 = [SE3.Tz(0.1)*goal_2, goal_2, SE3.Tz(0.2)*goal_2]
+goal_wp1 = [SE3(0,0.1,0.15)*goal_1, goal_1, SE3.Tz(0.2)*goal_1] 
+goal_wp2 = [SE3(0,0.1,0.15)*goal_2, goal_2, SE3.Tz(0.2)*goal_2]
 goal_poses = [goal_wp1, goal_wp2] 
 
 # Add the Fetch and other shapes into the simulator
 env.add(fetch)
 env.add(fetch_camera)
+fetch_gripper.add_to_env(env)
 env_stuff.add_to_env()
 [env.add(pattern) for pattern in pattern_lists]
+
+# Thread set-up to update the gripper position
+stop_flag = False
+def gripper_update():
+    while not stop_flag:
+        fetch_gripper.gripper_attach(fetch.fkine(fetch.q))
+        time.sleep(0.01)
+    if stop_flag:
+        return True
+thread_gripper = threading.Thread(target= gripper_update)
 
 ## MAIN CODE -----------------------------------------------------------------------------------------------# 
 if __name__ == "__main__":
@@ -93,6 +109,9 @@ if __name__ == "__main__":
     # Wait before starting
     time.sleep(2)
     
+    # Run the gripper update thread
+    thread_gripper.start()
+
     ## SET-UP REQUIRED VARIABLES ---------------------------------------------------------------------------#
     # The required relative pose of the marker in camera frame 
     T_Cd_G = SE3(0,0.15,1.5) # object pose is 1.5m front-to parallel and 0.1m lower to the camera plane
@@ -107,10 +126,10 @@ if __name__ == "__main__":
     dist_ob_h = 0.25
 
     # Vertical distance(m) that the Fetch maintains from the objects in table
-    dist_ob_v = 0.05
+    dist_ob_v = 0.1
 
     # Max control step
-    max_step = 150
+    max_step = 500
 
     ## SET-UP REQUIRED CONTROL FUNCTIONS --------------------------------------------------------------------#
     # Function to move the Fetch to the required position using Position-Based Visual Servoing
@@ -212,7 +231,7 @@ if __name__ == "__main__":
         arrived = et < err
 
         return arrived
-    
+
     ## CONTROL STEPS ----------------------------------------------------------------------------------------#
     # 1. Move the Fetch from a random initial position to the target table by Position-Base visual servoing
     arrived = False
@@ -238,14 +257,15 @@ if __name__ == "__main__":
         # 2.1 Move the Fetch base to the relative position to object
         arrived = False
         step_num = 0
-        while not arrived and step_num < max_step:
+        while not arrived and step_num < 0.1*max_step:
             arrived = step(Tep_b, end= 'torso_lift_link', end_num= 2)
             step_num += 1    
             plt.pause(0.01)
             env.step(0.01)
 
         # 2.1.1 Open gripper
-        
+        fetch_gripper.manipulate_gripper(True)
+
         # 2.2 Move the Fetch arm to pick object
         arrived = False
         step_num = 0
@@ -256,9 +276,11 @@ if __name__ == "__main__":
             env.step(0.01)
 
         # 2.3 Close gripper
-        time.sleep(1)
+        fetch_gripper.manipulate_gripper('half')
 
         # Transform between end-effector and object while gripping
+        fetch.qd = np.zeros(fetch.n)
+        fetch_camera.qd = np.zeros(fetch_camera.n)
         T_e_c = fetch.fkine(fetch.q).inv() * SE3(cans[i].T)
 
         # 2.4 Move the object to the goal pose
@@ -266,16 +288,16 @@ if __name__ == "__main__":
             arrived = False
             step_num = 0
             while not arrived and step_num < max_step:
-                arrived = step(goal, err= 0.05)
-                if j != len(goal_poses[i])-1:
+                arrived = step(goal, err= 0.03)
+                if j < len(goal_poses[i])-1:
                     cans[i].T = fetch.fkine(fetch.q).A @ T_e_c.A 
                 step_num += 1
                 plt.pause(0.01)
                 env.step(0.01)
 
         # 2.4.1 Open gripper
-        time.sleep(1)
-    
+        fetch_gripper.manipulate_gripper(True)
+
     ## 3. FINISHING ----------------------------------------------------------------------------------------#
     # 3.1 Slide back
     Te_back = SE3.Tx(-1.5) * fetch.fkine(fetch.q)
@@ -292,5 +314,10 @@ if __name__ == "__main__":
         fetch.q[3:] = q
         plt.pause(0.01)
         env.step(0.01)
+
+    # 3.3 Close the gripper and join the gripper thread
+    fetch_gripper.manipulate_gripper(False)
+    stop_flag = True
+    thread_gripper.join()
 
     input('Enter to end!')

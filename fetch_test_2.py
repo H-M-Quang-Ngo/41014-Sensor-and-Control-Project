@@ -158,15 +158,18 @@ if __name__ == "__main__":
 
     # Wait 1 sec before starting
     time.sleep(1)
-    manipulate_gripper(env, open= True)
+    # manipulate_gripper(env, open= True)
+    gripper_fetch.manipulate_gripper(True)
     arrived = False
     while not arrived:
         arrived = step_base()
         update_camera_view(camera, points, image_plane, True)
-        gripper_attach(fetch.fkine(fetch.q), env)
+        # gripper_attach(fetch.fkine(fetch.q), env)
+        gripper_fetch.gripper_attach(fetch.fkine(fetch.q))
         plt.pause(0.01)
         env.step(0.01)
 
-    manipulate_gripper(env, open = False)
+    # manipulate_gripper(env, open = False)
+    gripper_fetch.manipulate_gripper(False)
     input('Enter to end!')
     # env.hold()
