@@ -1,6 +1,8 @@
 # #!/usr/bin/env python
 # """
-# @ base on Jesse Haviland
+# Teach file for testing Fetch configuration
+# @author Ho Minh Quang Ngo
+# @base on Jesse Haviland
 # """
 
 import swift
@@ -14,10 +16,10 @@ env = swift.Swift()
 env.launch()
 
 # Make a fetch robot and add it to Swift
-fetch = rtb.models.Fetch()
+fetch = rtb.models.FetchCamera()
 fetch.q = fetch.qr
-fetch.q[3:] = np.deg2rad([90, 15, -120, 90, 90, 90, -45])
-fetch.q[3:] = np.deg2rad([90, 15, -180, 90, 0, 90, -45])
+# fetch.q[3:] = np.deg2rad([90, 15, -120, 90, 90, 90, -45])
+# fetch.q[3:] = np.deg2rad([90, 15, -180, 90, 0, 90, -45])
 
 env.add(fetch)
 

@@ -13,7 +13,7 @@ from spatialmath import SE3
 from spatialmath.base import *
 from math import pi
 from support_funcs import *
-from machinevisiontoolbox import CentralCamera
+from machinevisiontoolbox import CentralCamera, mkgrid
 from environment import stuff
 from gripper import Gripper_finger_Fetch
 
@@ -44,21 +44,21 @@ fetch.base = random_base
 fetch_camera.base = random_base
 fetch_gripper.gripper_attach(fetch.fkine(fetch.q))
 
-# Create 3D target pose and points for vision:
+# Create a camera object
+camera = CentralCamera(f= 0.015, rho = 10e-6, imagesize = [640, 480], pp = [320,240], name = 'Fetch Camera')
+cam_obj_test = geometry.Cuboid(scale= (0.3,0.1,0.5), pose = camera.pose, color = (0.3, 0.1, 0.1, 0.3))
+
+# Create 3D target marker and points for vision:
 x_3d, y_3d, z_3d = 4, 0, 1.1
-size = 0.15 # edge length of QR
+size = 0.15 # edge length of marker
 points = np.column_stack(([x_3d, y_3d + size/2 , z_3d + size/2],
                           [x_3d, y_3d - size/2 , z_3d + size/2],
                           [x_3d, y_3d - size/2 , z_3d - size/2],
                           [x_3d, y_3d + size/2 , z_3d - size/2]))
-QR_pose = SE3(x_3d, y_3d, z_3d) * SE3.Ry(pi/2) * SE3.Rz(-pi/2)
-pattern_lists = []
+marker_pose = SE3(x_3d, y_3d, z_3d) * SE3.Ry(pi/2) * SE3.Rz(-pi/2)
+marker_patterns = []
 for i in range(points.shape[1]):
-    pattern_lists.append(geometry.Sphere(radius= 0.02, pose = SE3(points[:,i]), color = (0,0,0.5,1)))
-
-# Add a camera test object
-camera = CentralCamera(f= 0.015, rho = 10e-6, imagesize = [640, 480], pp = [320,240], name = 'Fetch Camera')
-cam_obj_test = geometry.Cuboid(scale= (0.3,0.1,0.5), pose = camera.pose, color = (0.3, 0.1, 0.1, 0.3))
+    marker_patterns.append(geometry.Sphere(radius= 0.02, pose = SE3(points[:,i]), color = (0,0,0.5,1)))
 
 # Relative pose of the camera in the default Fetch camera frame
 T_FC_C = SE3.Ry(pi/2) * SE3.Rz(-pi/2)
@@ -68,7 +68,7 @@ image_plane = plt.gca()
 update_camera_view(camera, points, image_plane)
 plt.pause(0.01)
 
-# Adding environment stuffs
+# Create environment stuffs
 env_stuff = stuff(env)
 cans = [env_stuff.can_1, env_stuff.can_2]
 # Transform to fix object positions
@@ -76,14 +76,20 @@ T_adjust = SE3(3.05, 0.96, 1.91) * SE3.RPY(0,-pi/2,-pi/2)
 can_pose_1 = SE3(env_stuff.can_1.T)*T_adjust
 can_pose_2 = SE3(env_stuff.can_2.T)*T_adjust
 can_poses = [can_pose_1, can_pose_2]
+can_marker_points = [mkgrid(n = 2, side = 0.027, pose = can_pose_1),
+                     mkgrid(n = 2, side = 0.027, pose = can_pose_2)]
+can_marker_patterns = []
+for p in can_marker_points:
+    for i in range(p.shape[1]):
+        can_marker_patterns.append(geometry.Sphere(radius= 0.01, pose = SE3.Tz(0.03) * SE3(p[:,i]), color = (0.5,0,0,1)))
 
 # Goal poses for the objects with waypoints
-goal_1 = SE3(2.8, -0.5, 0.6) 
-goal_2 = SE3(2.8, -0.3, 0.58)
+goal_1 = SE3(2.8, -0.5, 0.63) 
+goal_2 = SE3(2.8, -0.3, 0.61)
 goal_1.A[:3,:3] = SE3.Ry(pi/2).R
 goal_2.A[:3,:3] = SE3.Ry(pi/2).R
-goal_wp1 = [SE3(0,0.1,0.15)*goal_1, goal_1, SE3.Tz(0.2)*goal_1] 
-goal_wp2 = [SE3(0,0.1,0.15)*goal_2, goal_2, SE3.Tz(0.2)*goal_2]
+goal_wp1 = [SE3(0,0.15,0.15)*goal_1, goal_1, SE3.Tz(0.2)*goal_1] 
+goal_wp2 = [SE3(0,0.15,0.15)*goal_2, goal_2, SE3.Tz(0.2)*goal_2]
 goal_poses = [goal_wp1, goal_wp2] 
 
 # Add the Fetch and other shapes into the simulator
@@ -91,17 +97,35 @@ env.add(fetch)
 env.add(fetch_camera)
 fetch_gripper.add_to_env(env)
 env_stuff.add_to_env()
-[env.add(pattern) for pattern in pattern_lists]
+[env.add(pattern) for pattern in marker_patterns]
+[env.add(pattern) for pattern in can_marker_patterns]
+
+# A flag to control threads
+STOP_FLAG = False
 
 # Thread set-up to update the gripper position
-stop_flag = False
 def gripper_update():
-    while not stop_flag:
+    while not STOP_FLAG:
         fetch_gripper.gripper_attach(fetch.fkine(fetch.q))
         time.sleep(0.01)
-    if stop_flag:
+    if STOP_FLAG:
         return True
 thread_gripper = threading.Thread(target= gripper_update)
+
+# Thread set-up to update objects' positions based on Fetch's end-effector
+UPDATE_TRIGGER = False
+obj_num = 0 # index of object to get updated
+T_e_o = SE3() # required relative transform between end-effector and object
+def object_update():
+    while not STOP_FLAG: 
+        if UPDATE_TRIGGER:
+            cans[obj_num].T = fetch.fkine(fetch.q).A @ T_e_o.A 
+        time.sleep(0.01)
+    if STOP_FLAG:
+        return True
+thread_objs = threading.Thread(target= object_update)
+
+input("Enter to start!")
 
 ## MAIN CODE -----------------------------------------------------------------------------------------------# 
 if __name__ == "__main__":
@@ -109,8 +133,9 @@ if __name__ == "__main__":
     # Wait before starting
     time.sleep(2)
     
-    # Run the gripper update thread
+    # Run the required threads
     thread_gripper.start()
+    thread_objs.start()
 
     ## SET-UP REQUIRED VARIABLES ---------------------------------------------------------------------------#
     # The required relative pose of the marker in camera frame 
@@ -140,7 +165,7 @@ if __name__ == "__main__":
         update_camera_pose(camera, fetch_camera)
         
         # Estimate object's pose in camera frame
-        p = camera.project_point(P = points, objpose= QR_pose)
+        p = camera.project_point(P = points, objpose= marker_pose)
         Te_C_G = camera.estpose(P = points, p = p, frame= 'camera')    
 
         # Find transform between Fetch camera and target
@@ -179,6 +204,11 @@ if __name__ == "__main__":
              err: float = 0.1):
         """
         Control Fetch motion base on input goal pose
+        @param `Tep`  : input goal pose, `SE3` or `ndarray`
+        @param `start`: the start link to calculate motion from, `str`
+        @param `end`  : the end link which required to be the goal pose, `str`
+        @param `gain` : gain for P controller
+        @param `err`  : threshold error
         """
         if Tep is not SE3:
             Tep = SE3(Tep)
@@ -232,6 +262,75 @@ if __name__ == "__main__":
 
         return arrived
 
+    # Function to move the Fetch camera to see object on table
+    def head_move(joints:np.ndarray|list, pts:np.ndarray = None, objpose:SE3 = None, scan = False):
+        """
+        Function to move the Fetch camera (the head) to see object on table
+        @param `joints`: two desired values of head joints
+        @param `pts`: points list in 3D space seen by the camera
+        @param `scan`  : if `True`, try to adjust the camera to see the input `pts`
+        """
+        fetch.qd = np.zeros(fetch.n)
+        fetch_camera.qd = np.zeros(fetch_camera.n)
+        
+        camera.clf()
+        if not scan: # Move the camera to the input value
+            head_traj = gen_traj(fetch_camera.q[3:5], joints)
+            for q in head_traj:
+                fetch_camera.q[3:5] = q
+                update_camera_pose(camera, fetch_camera)
+                if pts is not None:
+                    update_camera_view(camera, pts, image_plane)
+                plt.pause(0.01)
+                env.step(0.01)
+        
+        else: # Try to find a camera postion that can see the input points
+            if pts is None:
+                raise ValueError
+
+            # Scan parameters
+            step_pan_scan = np.deg2rad(-5) 
+            head_pan_start = np.deg2rad(70)
+            head_pan_end = np.deg2rad(-70)
+
+            step_tilt_scan = np.deg2rad(5)
+            head_tilt_start = np.deg2rad(20)
+            head_tilt_end = np.deg2rad(80)
+            valid_found = False
+
+            # Move the head to a starting position
+            head_move([head_pan_start, head_tilt_start])
+                
+            for head_pan_value in np.arange(head_pan_start, head_pan_end + step_pan_scan, step_pan_scan):
+                head_move([head_pan_value, head_tilt_start])
+                for head_tilt_value in np.arange(head_tilt_start, head_tilt_end + step_tilt_scan, step_tilt_scan):
+                    fetch_camera.q[4] = head_tilt_value
+                    update_camera_pose(camera, fetch_camera)
+                    uv = camera.project_point(pts)
+                    all_uv_valid = True
+                    for i in range(uv.shape[1]):  
+                        if 0 < uv[0,i] < camera.pp[0] and  0 < uv[1,i] < camera.pp[1]:
+                            update_camera_view(camera, pts, image_plane)
+                            plt.pause(0.01)
+                        else:
+                            all_uv_valid = False
+                            break
+                            
+                    valid_found = all_uv_valid
+                    if valid_found:
+                        break
+
+                    plt.pause(0.01)
+                    env.step(0.01)
+
+                if valid_found:
+                    break
+
+            if not valid_found:
+                print("CAN'T SOLVE FOR A VALID CAMERA POSE!")
+                head_move([0,0])
+
+
     ## CONTROL STEPS ----------------------------------------------------------------------------------------#
     # 1. Move the Fetch from a random initial position to the target table by Position-Base visual servoing
     arrived = False
@@ -243,18 +342,23 @@ if __name__ == "__main__":
     
     # 2. Do the process of pick and place objects
     for i in range(len(cans)):
+
+        # 2.1 Move the Fetch camera to see objects on table:
+        head_move(None, pts = can_marker_points[i], objpose= can_poses[i], scan= True)
+        time.sleep(1)
+
         # Required pose of the Fetch torso link to pick object 
         Tep_b = fetch.fkine(fetch.q, end= 'torso_lift_link').A
-        Tep_b[:3,-1] = [QR_pose.A[0,-1] - dist_base,
+        Tep_b[:3,-1] = [marker_pose.A[0,-1] - dist_base,
                         can_poses[i].A[1,-1] - dist_ob_h,
                         can_poses[i].A[2,-1] - dist_ob_v]
-        
+
         # Required pose of the Fetch gripper to pick object 
         Tep_p = can_poses[i].A
         Tep_p[:3,:3] = SE3.Ry(pi/2).R
-        Tep_p[2,-1] -= 0.01
+        Tep_p[2,-1] = can_poses[i].A[2,-1] - 0.01
         
-        # 2.1 Move the Fetch base to the relative position to object
+        # 2.2 Move the Fetch base to the relative position to object
         arrived = False
         step_num = 0
         while not arrived and step_num < 0.1*max_step:
@@ -263,10 +367,10 @@ if __name__ == "__main__":
             plt.pause(0.01)
             env.step(0.01)
 
-        # 2.1.1 Open gripper
+        # 2.3 Open gripper
         fetch_gripper.manipulate_gripper(True)
-
-        # 2.2 Move the Fetch arm to pick object
+        
+        # 2.4 Move the Fetch arm to pick object
         arrived = False
         step_num = 0
         while not arrived and step_num < max_step:
@@ -275,31 +379,34 @@ if __name__ == "__main__":
             plt.pause(0.01)
             env.step(0.01)
 
-        # 2.3 Close gripper
+        # 2.5 Close gripper and look at the goal
         fetch_gripper.manipulate_gripper('half')
-
+        head_move(np.deg2rad([-45,45]))
+        time.sleep(1)
+        head_move([0,0])
+        
         # Transform between end-effector and object while gripping
-        fetch.qd = np.zeros(fetch.n)
-        fetch_camera.qd = np.zeros(fetch_camera.n)
-        T_e_c = fetch.fkine(fetch.q).inv() * SE3(cans[i].T)
+        T_e_o = fetch.fkine(fetch.q).inv() * SE3(cans[i].T)
+        UPDATE_TRIGGER = True
+        obj_num = i
 
-        # 2.4 Move the object to the goal pose
+        # 2.6 Move the object to the goal pose
         for j, goal in enumerate(goal_poses[i]):
             arrived = False
             step_num = 0
+            if j == len(goal_poses[i]) - 1:
+                # 2.7 Open gripper
+                fetch_gripper.manipulate_gripper(True)
             while not arrived and step_num < max_step:
                 arrived = step(goal, err= 0.03)
-                if j < len(goal_poses[i])-1:
-                    cans[i].T = fetch.fkine(fetch.q).A @ T_e_c.A 
+                if j >= len(goal_poses[i])-1:
+                    UPDATE_TRIGGER = False
                 step_num += 1
                 plt.pause(0.01)
                 env.step(0.01)
 
-        # 2.4.1 Open gripper
-        fetch_gripper.manipulate_gripper(True)
-
-    ## 3. FINISHING ----------------------------------------------------------------------------------------#
-    # 3.1 Slide back
+    # 4. FINISHING ----------------------------------------------------------------------------------------#
+    # 4.1 Slide back
     Te_back = SE3.Tx(-1.5) * fetch.fkine(fetch.q)
     arrived = False
     step_num = 0
@@ -308,16 +415,18 @@ if __name__ == "__main__":
         plt.pause(0.01)
         env.step(0.01)
     
-    # 3.2 Waive the hand
+    # 4.2 Waive the hand and turn head to zero configuration
     traj = gen_traj(fetch.q[3:], np.deg2rad([90, 40, -180, 90, 0, 90, -45]))
     for q in traj:
         fetch.q[3:] = q
         plt.pause(0.01)
         env.step(0.01)
+    head_move([0,0])
 
-    # 3.3 Close the gripper and join the gripper thread
+    # 4.3 Close the gripper and join threads
     fetch_gripper.manipulate_gripper(False)
-    stop_flag = True
+    STOP_FLAG = True
     thread_gripper.join()
+    thread_objs.join()
 
     input('Enter to end!')
