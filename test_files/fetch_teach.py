@@ -1,9 +1,11 @@
 # #!/usr/bin/env python
 # """
 # Teach file for testing Fetch configuration
-# @author Ho Minh Quang Ngo
 # @base on Jesse Haviland
 # """
+
+import sys
+sys.path.append('./')
 
 import swift
 import roboticstoolbox as rtb

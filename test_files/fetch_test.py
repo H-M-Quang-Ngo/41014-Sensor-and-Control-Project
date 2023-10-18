@@ -1,3 +1,6 @@
+import sys
+sys.path.append('./')
+
 import swift
 import roboticstoolbox as rtb
 import numpy as np
