@@ -18,13 +18,15 @@ Steps breakdown:
 ![Alt text](image.png)
 
 ## Requirements
-Required Python 3.7 above, the Robotics Toolbox for Python (RTB-P) and some dependencies:
+Required Python 3.7 above, the Robotics Toolbox for Python (RTB-P), and some dependencies:
+    
     $ pip install rvc3python
+    
     $ pip install machinevision-toolbox-python
+    
     $ pip install ir-support
 
-## How to run the:
-    Execute main_file.py
+## How to run:
+Execute **main_file.py**
 
-    What will happen:
-        See video: 
+Video for what will happen: 
