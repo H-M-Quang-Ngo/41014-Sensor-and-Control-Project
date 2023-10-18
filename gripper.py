@@ -1,6 +1,6 @@
 ## @file
 #  @brief Gripper for FETCH Robot defined by standard DH parameters with 3D model
-#  @author Long Thinh Le
+#  @author Long Thinh Le & Ho Minh Quang Ngo
 #  @date Oct 1, 2023
 
 from swift import Swift
@@ -70,8 +70,9 @@ class Gripper_finger_Fetch(DHRobot3D):
     def gripper_attach(self, fetch_ee:SE3):
         """
         Attach the grippers onto the Fetch end-effector.
+        
+        @param `fetch_ee`: end-effector pose of the Fetch arm
         """
-        # T = SE3(0,0.0073,0) * SE3.RPY(pi/2, 0, pi)
         self.base = self.Gripper_base_origin * fetch_ee * self._T_ee_gripper
         self._update_3dmodel()
         self._env.step(0.001)
@@ -79,6 +80,8 @@ class Gripper_finger_Fetch(DHRobot3D):
     def manipulate_gripper(self, open: bool|str = True):        
         """
         Open or close the gripper
+
+        @param `open`: open the gripper if `True` and vice versa
         """
         if open: 
             gripper_range = 0.03

@@ -1,8 +1,13 @@
+## @file
+#  @brief Include some supporting functions for the main code, including velocity computation, camera view update, trajectory generator, etc.
+#  @author Ho Minh Quang Ngo
+#  @date Oct 1, 2023
+
 import roboticstoolbox as rtb
 import numpy as np
-import time
-from spatialmath import SE3
+# import time
 import spatialgeometry as geometry
+from spatialmath import SE3
 from math import pi
 from machinevisiontoolbox import CentralCamera
 
@@ -12,6 +17,11 @@ def update_camera_pose(cam: CentralCamera,
                        adj_mat: SE3 = SE3.Ry(pi/2) * SE3.Rz(-pi/2)):
     """
     Update the camera pose base on the Fetch Camera
+    
+    @param `cam`        : Camera object
+    @param `fetch_cam`  : Fetch platform with camera only (no arm)
+    @param `cam_object` : (optional) An object to represent the camera in environment 
+    @param `adj_mat`    : relation matrix between camera object and Fetch camera
     """
     cam.pose = SE3(fetch_cam.fkine(fetch_cam.q).A @ adj_mat.A)
     if cam_object is not None:
@@ -20,6 +30,11 @@ def update_camera_pose(cam: CentralCamera,
 def update_camera_view(camera: CentralCamera, points: np.ndarray, image_plane, trace = False):
     """
     Update the image plane of the camera
+    
+    @param `camera`:        Camera object
+    @param `points`:        N points in global frame of format 3xN `ndarray`
+    @param `image_plane`:   image plane of the camera
+    @param `trace`:         visualize the trajectory in camera frame, `False` by default
     """
     if not hasattr(update_camera_view, '_trace_points'):
         update_camera_view._trace_points = []
@@ -43,21 +58,42 @@ def update_camera_view(camera: CentralCamera, points: np.ndarray, image_plane, t
     # time.sleep(0.01)
 
 def reduce_qd(qd, qdlim, scale = False):
+    """
+    Constrain the joint velocity within the joint velocity limit
+    
+    @param `qd`     : input joint velocity vector 1xN array-like
+    @param `qdlim`  : joint velocity limit vector 1xN array-like
+    @param `scale`  : if `True`, scale the velocity while keeping its initial direction
+    
+    @return         : valid joint velocity within limit
+    """
     if scale:
         scaling_factor = np.minimum(np.abs(qdlim)/np.abs(qd), 1)
         qd *= scaling_factor
         # return qd
     else:
         for i in range(len(qd)):
-            qd[i] = min(abs(qd[i]), qdlim[i])*qd[i]/abs(qd[i])
-    
+            qd[i] = min(abs(qd[i]), qdlim[i])*qd[i]/abs(qd[i]) 
     return qd
 
 def dls_vel(robot: rtb.Robot, v:np.ndarray, epsilon: float = 0.01, max_lambda: float = 0.5, 
             start: str = None, 
             end: str = None, 
             qdlim: np.ndarray = None, scale: bool = True):
+    """
+    Solve for joint velocity using Damped-Least Squares
     
+    @param `robot`      : input robot
+    @param `v`          : desired spatial velocity in `end` link frame
+    @param `epsilon`    : minimum manipulability threshold
+    @param `max_lambda` : maximum damping coefficient
+    @param `start`      : `str` starting link, default to base link 
+    @param `end`        : `str` end link, default to end-effector link
+    @param `qdlim`      : joint velocity limit vector 1xN array-like
+    @param `scale`      : if `True`, scale the joint velocity while keeping its initial direction
+
+    @return joint velocity
+    """
     if start is not None and end is None:
         J = robot.jacobe(robot.q, start = start)
     elif start is None and end is not None:
@@ -87,6 +123,10 @@ def dls_vel(robot: rtb.Robot, v:np.ndarray, epsilon: float = 0.01, max_lambda: f
 def distance(q1, q2):
     """
     Euclidean distance between two joint state vector
+
+    @param `q1`, `q2`: input joint states
+
+    @return Euclidean distance
     """
     try:
         if q1 is None or q2 is None:
@@ -101,6 +141,15 @@ def distance(q1, q2):
         return 0
 
 def gen_traj(q1, q2, step_size = np.deg2rad(5), traj_type='trapezoidal'):
+    """
+    Create a joint space trajectory between two joint states
+
+    @param `q1`, `q2` : initial and goal joint state
+    @param `step_size`: Euclidean difference between each step
+    @param `traj_type`: solver method, `quintic` or `trapezoidal` 
+
+    @return a list of intermediate states from `q1` to `q2`
+    """
     if np.array_equal(q1, q2):
         return [q1]
 

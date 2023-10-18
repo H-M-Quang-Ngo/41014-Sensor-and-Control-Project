@@ -1,3 +1,8 @@
+## @file
+#  @brief Environment class
+#  @author Long Thinh Le 
+#  @date Oct 1, 2023
+
 from spatialmath import SE3
 import spatialgeometry as geometry
 import os
@@ -5,7 +10,7 @@ from math import pi
 from swift import Swift
 
 class stuff():
-    """ All stuff for the environment such as a table, cans, apples """
+    """ All stuffs for the environment such as a table, cans, walls, etc. """
 
     def __init__(self, env: Swift):
         self._env = env

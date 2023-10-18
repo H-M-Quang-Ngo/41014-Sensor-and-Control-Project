@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import spatialgeometry as geometry
 import threading
+import time
 from spatialmath import SE3
 from spatialmath.base import *
 from math import pi
@@ -210,6 +211,7 @@ if __name__ == "__main__":
              err: float = 0.1):
         """
         Control Fetch motion base on input goal pose
+        
         @param `Tep`  : input goal pose, `SE3` or `ndarray`
         @param `start`: the start link to calculate motion from, `str`
         @param `end`  : the end link which required to be the goal pose, `str`
@@ -269,9 +271,10 @@ if __name__ == "__main__":
         return arrived
 
     # Function to move the Fetch camera to see object on table
-    def head_move(joints:np.ndarray|list, pts:np.ndarray = None, objpose:SE3 = None, scan = False):
+    def head_move(joints:np.ndarray|list, pts:np.ndarray = None, scan = False):
         """
         Function to move the Fetch camera (the head) to see object on table
+
         @param `joints`: two desired values of head joints
         @param `pts`: points list in 3D space seen by the camera
         @param `scan`  : if `True`, try to adjust the camera to see the input `pts`
@@ -370,7 +373,7 @@ if __name__ == "__main__":
             env.step(0.01)
         
         # 2.2 Move the Fetch camera to see objects on table:
-        head_move(None, pts = can_marker_points[i], objpose= can_poses[i], scan= True)
+        head_move(None, pts = can_marker_points[i], scan= True)
         time.sleep(1)
         
         # 2.3 Open gripper
