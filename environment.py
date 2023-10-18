@@ -20,9 +20,11 @@ class stuff():
         self.table = geometry.Mesh(table_file_path, pose=SE3.Rx(90, 'deg') * SE3(-1.4, -0.36, -0.6) * SE3.Ry(90, 'deg') * SE3(-1.6, 0, 4.0), color=(0.5, 0.27, 0.07, 1.0), scale=(1, 1, 1))
         self.can_1 = geometry.Mesh(cans_file_path, pose=SE3.Rx(90, 'deg') * SE3(-1.4, -0.36, -0.6) * SE3.Ry(90, 'deg') * SE3(-3.3, 0, 2.3), color=(0.3, 0.5, 0.5, 1.0), scale=(1, 1, 1))
         self.can_2 = geometry.Mesh(cans_file_path, pose=SE3.Rx(90, 'deg') * SE3(-1.4, -0.36, -0.6) * SE3.Ry(90, 'deg') * SE3(-3.0, 0, 2.5), color=(0.5, 0.5, 0.3, 1.0), scale=(1, 1, 1))
+        self.wall  = geometry.Cuboid(scale = [0.3, 5, 2], pose = SE3(4.15, 0, 1), color = (0.5, 0.5, 0.5, 0.2))
 
     def add_to_env(self):
         """Add objects to the specified environment."""
         self._env.add(self.table)
         self._env.add(self.can_1)
         self._env.add(self.can_2)
+        self._env.add(self.wall)

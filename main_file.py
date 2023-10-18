@@ -56,9 +56,10 @@ points = np.column_stack(([x_3d, y_3d + size/2 , z_3d + size/2],
                           [x_3d, y_3d - size/2 , z_3d - size/2],
                           [x_3d, y_3d + size/2 , z_3d - size/2]))
 marker_pose = SE3(x_3d, y_3d, z_3d) * SE3.Ry(pi/2) * SE3.Rz(-pi/2)
+marker_board = geometry.Cuboid(scale=[0.15,0.15,0.02], pose = marker_pose, color = (0.2,0.5,0.2,1))
 marker_patterns = []
 for i in range(points.shape[1]):
-    marker_patterns.append(geometry.Sphere(radius= 0.02, pose = SE3(points[:,i]), color = (0,0,0.5,1)))
+    marker_patterns.append(geometry.Sphere(radius= 0.015, pose = SE3(points[:,i]), color = (0,0,0.5,1)))
 
 # Relative pose of the camera in the default Fetch camera frame
 T_FC_C = SE3.Ry(pi/2) * SE3.Rz(-pi/2)
@@ -71,17 +72,18 @@ plt.pause(0.01)
 # Create environment stuffs
 env_stuff = stuff(env)
 cans = [env_stuff.can_1, env_stuff.can_2]
-# Transform to fix object positions
-T_adjust = SE3(3.05, 0.96, 1.91) * SE3.RPY(0,-pi/2,-pi/2)    
+T_adjust = SE3(3.05, 0.96, 1.91) * SE3.RPY(0,-pi/2,-pi/2)    # Transform to fix object positions
 can_pose_1 = SE3(env_stuff.can_1.T)*T_adjust
 can_pose_2 = SE3(env_stuff.can_2.T)*T_adjust
 can_poses = [can_pose_1, can_pose_2]
 can_marker_points = [mkgrid(n = 2, side = 0.027, pose = can_pose_1),
                      mkgrid(n = 2, side = 0.027, pose = can_pose_2)]
 can_marker_patterns = []
-for p in can_marker_points:
+can_marker_transforms = []
+for num, p in enumerate(can_marker_points):
     for i in range(p.shape[1]):
         can_marker_patterns.append(geometry.Sphere(radius= 0.01, pose = SE3.Tz(0.03) * SE3(p[:,i]), color = (0.5,0,0,1)))
+        can_marker_transforms.append(SE3(cans[num].T).inv() * SE3.Tz(0.03) * SE3(p[:,i]))
 
 # Goal poses for the objects with waypoints
 goal_1 = SE3(2.8, -0.5, 0.63) 
@@ -95,6 +97,7 @@ goal_poses = [goal_wp1, goal_wp2]
 # Add the Fetch and other shapes into the simulator
 env.add(fetch)
 env.add(fetch_camera)
+env.add(marker_board)
 fetch_gripper.add_to_env(env)
 env_stuff.add_to_env()
 [env.add(pattern) for pattern in marker_patterns]
@@ -119,7 +122,10 @@ T_e_o = SE3() # required relative transform between end-effector and object
 def object_update():
     while not STOP_FLAG: 
         if UPDATE_TRIGGER:
-            cans[obj_num].T = fetch.fkine(fetch.q).A @ T_e_o.A 
+            cans[obj_num].T = fetch.fkine(fetch.q).A @ T_e_o.A
+            for num, point in enumerate(can_marker_patterns):
+                if obj_num*4 <= num <= obj_num*4 + 3: 
+                    point.T = cans[obj_num].T @ can_marker_transforms[num].A
         time.sleep(0.01)
     if STOP_FLAG:
         return True
@@ -273,7 +279,9 @@ if __name__ == "__main__":
         fetch.qd = np.zeros(fetch.n)
         fetch_camera.qd = np.zeros(fetch_camera.n)
         
+        time.sleep(0.5)
         camera.clf()
+        
         if not scan: # Move the camera to the input value
             head_traj = gen_traj(fetch_camera.q[3:5], joints)
             for q in head_traj:
@@ -283,7 +291,7 @@ if __name__ == "__main__":
                     update_camera_view(camera, pts, image_plane)
                 plt.pause(0.01)
                 env.step(0.01)
-        
+            
         else: # Try to find a camera postion that can see the input points
             if pts is None:
                 raise ValueError
@@ -315,7 +323,6 @@ if __name__ == "__main__":
                         else:
                             all_uv_valid = False
                             break
-                            
                     valid_found = all_uv_valid
                     if valid_found:
                         break
@@ -330,7 +337,6 @@ if __name__ == "__main__":
                 print("CAN'T SOLVE FOR A VALID CAMERA POSE!")
                 head_move([0,0])
 
-
     ## CONTROL STEPS ----------------------------------------------------------------------------------------#
     # 1. Move the Fetch from a random initial position to the target table by Position-Base visual servoing
     arrived = False
@@ -343,10 +349,6 @@ if __name__ == "__main__":
     # 2. Do the process of pick and place objects
     for i in range(len(cans)):
 
-        # 2.1 Move the Fetch camera to see objects on table:
-        head_move(None, pts = can_marker_points[i], objpose= can_poses[i], scan= True)
-        time.sleep(1)
-
         # Required pose of the Fetch torso link to pick object 
         Tep_b = fetch.fkine(fetch.q, end= 'torso_lift_link').A
         Tep_b[:3,-1] = [marker_pose.A[0,-1] - dist_base,
@@ -358,7 +360,7 @@ if __name__ == "__main__":
         Tep_p[:3,:3] = SE3.Ry(pi/2).R
         Tep_p[2,-1] = can_poses[i].A[2,-1] - 0.01
         
-        # 2.2 Move the Fetch base to the relative position to object
+        # 2.1 Move the Fetch base to the relative position to object
         arrived = False
         step_num = 0
         while not arrived and step_num < 0.1*max_step:
@@ -366,7 +368,11 @@ if __name__ == "__main__":
             step_num += 1    
             plt.pause(0.01)
             env.step(0.01)
-
+        
+        # 2.2 Move the Fetch camera to see objects on table:
+        head_move(None, pts = can_marker_points[i], objpose= can_poses[i], scan= True)
+        time.sleep(1)
+        
         # 2.3 Open gripper
         fetch_gripper.manipulate_gripper(True)
         
