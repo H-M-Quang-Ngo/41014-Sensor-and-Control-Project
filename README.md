@@ -29,4 +29,6 @@ Required Python 3.7 above, the Robotics Toolbox for Python (RTB-P), and some dep
 ## How to run:
 Execute **main_file.py**
 
-Video for what will happen: 
+Video for what is expected to happen: 
+    https://www.youtube.com/watch?v=hcLFaT_tkqg
+    
